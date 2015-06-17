@@ -1,2 +1,1 @@
-# twenty-four
-Twenty four solvers, etc.
+[24](https://en.wikipedia.org/wiki/24_Game) is a game in which players are given a card with 4 numbers on it. The first player to find a way to manipulate those numbers using basic mathematical operations (+, -, x, /) to make the number 24 wins the card. Each number must be used exactly once.
