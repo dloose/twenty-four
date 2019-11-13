@@ -1,4 +1,5 @@
 from collections import defaultdict
+from functools import cmp_to_key
 
 import itertools
 
@@ -55,6 +56,9 @@ class ConstNode(Node):
     def as_tuple(self):
         return self.value,
 
+    def as_string(self):
+        return str(self.value)
+
 
 class OperatorNode(Node):
     def __init__(self, arg1, arg2, op):
@@ -65,9 +69,21 @@ class OperatorNode(Node):
         self.arg2 = arg2
         self.op = op
 
+    def find_similar_operands(self, node, accum):
+        if isinstance(node, self.__class__):
+            self.find_similar_operands(node.arg1, accum)
+            self.find_similar_operands(node.arg2, accum)
+        else:
+            accum.append(node)
+
     def as_tuple(self):
         return (*self.arg1.as_tuple(), *self.arg2.as_tuple(), self.op)
 
+    def as_string(self):
+        operands = []
+        self.find_similar_operands(self.arg1, operands)
+        self.find_similar_operands(self.arg2, operands)
+        return "(" + f" {self.op} ".join(op.as_string() for op in operands) + ")"
 
 class CommutativeNode(OperatorNode):
     def __init__(self, arg1, arg2, op):
@@ -93,9 +109,24 @@ class AdditionNode(CommutativeNode):
     def normalize(self):
         arg1 = self.arg1.normalize()
         arg2 = self.arg2.normalize()
-        if arg2.sort_order < arg1.sort_order or arg2.evaluate() < arg1.evaluate():
-            return AdditionNode(arg2, arg1)
-        return AdditionNode(arg1, arg2)
+
+        operands = []
+        self.find_similar_operands(arg1, operands)
+        self.find_similar_operands(arg2, operands)
+
+        def compare(op1, op2):
+            if op1.sort_order != op2.sort_order:
+                return op1.sort_order - op2.sort_order
+            if isinstance(op1, ConstNode) and isinstance(op2, ConstNode):
+                return op1.value - op2.value
+            return op1.evaluate() - op2.evaluate()
+
+        sorted_operands = sorted(operands, key=cmp_to_key(compare))
+
+        next = AdditionNode(sorted_operands[0], sorted_operands[1])
+        for op in sorted_operands[2:]:
+            next = AdditionNode(next, op)
+        return next
 
 
 class MultiplicationNode(CommutativeNode):
@@ -110,13 +141,30 @@ class MultiplicationNode(CommutativeNode):
     def normalize(self):
         arg1 = self.arg1.normalize()
         arg2 = self.arg2.normalize()
+
         if isinstance(arg1, ConstNode) and arg1.value == 1:
             return arg2
-        if isinstance(arg2, ConstNode) and arg2.value == 1:
+        elif isinstance(arg2, ConstNode) and arg2.value == 1:
             return arg1
-        if arg2.sort_order < arg1.sort_order or arg2.evaluate() < arg1.evaluate():
-            return MultiplicationNode(arg2, arg1)
-        return MultiplicationNode(arg1, arg2)
+
+        operands = []
+        self.find_similar_operands(arg1, operands)
+        self.find_similar_operands(arg2, operands)
+
+        def compare(op1, op2):
+            if op1.sort_order != op2.sort_order:
+                return op1.sort_order - op2.sort_order
+            if isinstance(op1, ConstNode) and isinstance(op2, ConstNode):
+                return op1.value - op2.value
+            return op1.evaluate() - op2.evaluate()
+
+        sorted_operands = sorted(operands, key=cmp_to_key(compare))
+
+        next = MultiplicationNode(sorted_operands[0], sorted_operands[1])
+        for op in sorted_operands[2:]:
+            next = MultiplicationNode(next, op)
+
+        return next
 
 
 class SubtractionNode(NonCommutativeNode):
@@ -182,13 +230,6 @@ def evaluate(expr):
     return stack[0]
 
 
-def normalize(expr):
-    node = Node.parse(expr)
-    normed = node.normalize()
-    tup = normed.as_tuple()
-    return tup
-
-
 def stringify(expr):
     stack = []
     for pos, elt in enumerate(expr):
@@ -197,8 +238,8 @@ def stringify(expr):
         elif len(stack) < 2:
             return None
         else:
-            arg1 = stack.pop()
             arg2 = stack.pop()
+            arg1 = stack.pop()
             stack.append(f"({arg1} {elt} {arg2})")
 
     if len(stack) != 1:
@@ -239,18 +280,29 @@ def print_hits(digit_perm, ops_perms, target):
     hits = [expr for expr in all_exprs if evaluate(expr) == target]
 
     if len(hits) > 0:
-        normalized = defaultdict(list)
-        for hit in hits:
-            normalized[normalize(hit)].append(hit)
-        print(f"HIT: {digit_perm} - (len {len(normalized)})")
-        for key, hit in normalized.items():
-            print(f"\t{stringify(hit[0])} has {len(hit)} similar solutions")
-            for h in hit:
-                print(f"\t\t{h}")
+        # normalized = defaultdict(list)
+        # for hit in hits:
+        #     node = Node.parse(hit)
+        #     normed = node.normalize()
+        #     tup = normed.as_tuple()
+        #     normalized[tup].append(node)
+        #
+        # print(f"HIT: {digit_perm} - (len {len(normalized)})")
+        # for _, hit in normalized.items():
+        #     h = hit[0].normalize()
+        #     print(f"\t{h.as_tuple()} :: {h.as_string()} has {len(hit)} similar solutions")
+        #     for h in hit:
+        #         print(f"\t\t{h.as_tuple()} :: {h.as_string()}")
+
+        print(f"HIT: {digit_perm} - (len {len(hits)})")
+        # for hit in hits:
+        #     print(f"\t{hit} :: {stringify(hit)}")
 
 
 if __name__ == "__main__":
-    # print(f"{normalize([2, 1, '+', 3, '+', 3, '-'])}")
+    # print(f"normalize([2, 1, '+', 3, '+', 3, '-']) = {normalize([2, 1, '+', 3, '+', 3, '-'])}")
+    # print(f"normalize([1, 2, '+', 3, '+', 3, '-']) = {normalize([1, 2,  3, '+', '+', 3, '-'])}")
+    # print(f"normalize([1, 3, '+', 2, '+', 3, '-']) = {normalize([1, 3, '+', 2, '+', 3, '-'])}")
     # main_one((1, 2, 1, 8), 24)
-    # main_one((1, 1, 5, 2), 24)
+    # main_one((1, 1, 6, 2), 24)
     main()
