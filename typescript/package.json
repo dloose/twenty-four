@@ -1,0 +1,11 @@
+{
+  "name": "@dloose/twentyfour",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "ts-node": "^8.5.0",
+    "typescript": "^3.7.2"
+  }
+}
